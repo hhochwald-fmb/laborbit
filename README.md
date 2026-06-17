@@ -39,6 +39,79 @@ LabOrbit ist extrem leichtgewichtig konzipiert und kommt ohne schwerfällige Fra
 
 ---
 
+---
+
+## 🐳 Installation mit Docker
+
+Die einfachste Methode, LabOrbit lokal oder auf einem eigenen Server zu betreiben — ohne manuelle PHP/MySQL-Konfiguration.
+
+### Voraussetzungen
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Mac/Windows) oder Docker + Docker Compose (Linux)
+
+### Schnellstart
+
+```bash
+# 1. Repository klonen
+git clone https://github.com/DEIN-USERNAME/laborbit.git
+cd laborbit
+
+# 2. Container starten
+docker compose up -d
+```
+
+Die App ist danach unter **http://localhost:8181** erreichbar.
+
+### Ersteinrichtung
+
+1. Öffne **http://localhost:8181/setup.php** im Browser
+2. **Schritt 1:** Datenbankverbindung — die Felder sind bereits vorausgefüllt:
+   - Host: `db`
+   - Benutzer: `laborbit`
+   - Passwort: `laborbit`
+   - Datenbankname: `laborbit`
+3. **Schritt 2:** Manager-Account anlegen (Benutzername + Passwort festlegen)
+4. Fertig — du wirst zum Login weitergeleitet
+
+> **Sicherheit:** Nach dem Setup die Datei `setup.php` aus dem Container löschen:
+> ```bash
+> docker compose exec app rm /var/www/html/setup.php
+> ```
+
+### Datenpersistenz
+
+| Was | Wo |
+|---|---|
+| Datenbank | Docker Volume `laborbit_db_data` |
+| Hochgeladene Dateien | Docker Volume `laborbit_uploads` |
+
+Beide Volumes bleiben bei `docker compose down` erhalten. Nur `docker compose down -v` löscht sie.
+
+### Nützliche Befehle
+
+```bash
+# Container stoppen
+docker compose down
+
+# Logs anzeigen
+docker compose logs -f app
+
+# Nach Code-Änderungen neu bauen
+docker compose build --no-cache && docker compose up -d
+
+# Datenbankzugang (z.B. für TablePlus/DBeaver)
+# → Port 3306 in docker-compose.yml unter db: ports: freigeben
+```
+
+### Port ändern
+
+Standard ist `8181`. In `docker-compose.yml` unter `app: ports:` anpassen:
+```yaml
+ports:
+  - "WUNSCHPORT:80"
+```
+
+---
+
 ## 🔄 Updates einspielen
 Wenn Aktualisierungen am LabOrbit-Code vorgenommen wurden, die Datenbank-Änderungen erfordern, musst du das System wie folgt updaten:
 1. Lade die neuen Dateien (z.B. aus der `LabOrbit_Release.zip`) per FTP/Dateisystem auf deinen Server.
