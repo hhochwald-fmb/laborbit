@@ -52,7 +52,7 @@ Die einfachste Methode, LabOrbit lokal oder auf einem eigenen Server zu betreibe
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/DEIN-USERNAME/laborbit.git
+git clone https://github.com/hhochwald-fmb/laborbit.git
 cd laborbit
 
 # 2. Container starten
