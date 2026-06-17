@@ -1,0 +1,19 @@
+# Konfiguration mit DB-Zugangsdaten — niemals einchecken!
+config.php
+
+# Nutzerdaten / Uploads
+uploads/
+
+# macOS
+.DS_Store
+
+# IDE
+*.code-workspace
+.vscode/
+.idea/
+
+# Docker (optional — auskommentieren wenn du die Docker-Dateien mit versionieren willst)
+# Dockerfile
+# docker-compose.yml
+# docker-entrypoint.sh
+# .dockerignore

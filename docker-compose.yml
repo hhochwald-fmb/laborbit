@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8181:80"
+    environment:
+      DB_HOST: db
+      DB_USER: laborbit
+      DB_PASS: laborbit
+      DB_NAME: laborbit
+      DB_PREFIX: ""
+    volumes:
+      - uploads:/var/www/html/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: laborbit
+      MYSQL_USER: laborbit
+      MYSQL_PASSWORD: laborbit
+      MYSQL_ROOT_PASSWORD: rootpassword
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "laborbit", "-plaborbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  uploads:
+  db_data:
