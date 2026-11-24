@@ -159,6 +159,8 @@ function fmtBytes(int $bytes): string {
 
     <h2 class="text-2xl font-bold text-slate-900 dark:text-white">🛠️ System</h2>
 
+    <?php echo uploadsProtectionNotice(true); ?>
+
     <!-- ── VERSION ── -->
     <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
         <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Version</h3>

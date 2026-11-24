@@ -120,6 +120,8 @@ $fmtSize    = fn(int $b) => $b >= 1048576 ? round($b / 1048576, 1) . ' MB' : rou
         </div>
     <?php endforeach; ?>
 
+    <?php echo uploadsProtectionNotice(); ?>
+
     <?php if ($isGit): ?>
         <div class="px-4 py-3 rounded-lg text-sm bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
             ℹ️ Diese Installation ist ein <strong>git-Checkout</strong>. Bitte auf dem Server mit

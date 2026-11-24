@@ -254,3 +254,42 @@ HTACCESS;
     }
     return @file_put_contents($file, $content, LOCK_EX) !== false;
 }
+
+/**
+ * Prüft den Upload-Schutz und legt ihn bei Bedarf erneut an (aufgerufen von den Admin-Seiten
+ * System und Updates). Gibt den Zustand zurück: 'ok', 'custom' (eigene .htaccess des Admins)
+ * oder 'missing' (konnte nicht angelegt werden).
+ */
+function uploadsProtectionStatus(): string
+{
+    $file = dirname(__DIR__) . '/uploads/.htaccess';
+    if (!is_file($file)) {
+        ensureUploadsProtection();
+        clearstatcache(true, $file);
+    }
+    if (!is_file($file)) {
+        return 'missing';
+    }
+    return strpos((string) file_get_contents($file), '# LabOrbit:') === 0 ? 'ok' : 'custom';
+}
+
+/** Warnung bzw. Hinweis für die Admin-Seiten; bei Erfolg leer (oder grüne Meldung mit $showOk). */
+function uploadsProtectionNotice(bool $showOk = false): string
+{
+    $status = uploadsProtectionStatus();
+    if ($status === 'ok') {
+        return $showOk
+            ? '<div class="px-4 py-3 rounded-lg text-sm bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">'
+                . '✅ <strong>Upload-Schutz aktiv:</strong> Im Ordner uploads/ können keine Skripte ausgeführt werden.</div>'
+            : '';
+    }
+    if ($status === 'custom') {
+        return '<div class="px-4 py-3 rounded-lg text-sm bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800">'
+            . '⚠️ <strong>uploads/.htaccess</strong> wurde nicht von LabOrbit angelegt und wird deshalb nicht automatisch aktualisiert. '
+            . 'Bitte prüfen, ob sie PHP-, HTML- und SVG-Dateien sperrt (Vorlage: includes/migrations.php).</div>';
+    }
+    return '<div class="px-4 py-3 rounded-lg text-sm bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800">'
+        . '❌ <strong>Upload-Schutz fehlt:</strong> Die Datei <code>uploads/.htaccess</code> konnte nicht angelegt werden '
+        . '(keine Schreibrechte im Ordner uploads/?). Ohne sie könnten hochgeladene Skripte ausgeführt werden. '
+        . 'Bitte Schreibrechte prüfen oder die Datei per FTP hochladen.</div>';
+}
