@@ -1,0 +1,6 @@
+# Backups und temporäre Update-Dateien dürfen nie per Web abrufbar sein.
+Require all denied
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

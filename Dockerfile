@@ -5,8 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev \
         libjpeg62-turbo-dev \
         libwebp-dev \
+        libzip-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
-    && docker-php-ext-install pdo pdo_mysql gd exif \
+    && docker-php-ext-install pdo pdo_mysql gd exif zip \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 

@@ -2,10 +2,20 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-$configFile = __DIR__ . '/../config.php';
+
+if (!defined('APP_ROOT')) {
+    define('APP_ROOT', dirname(__DIR__));
+}
+if (!defined('APP_VERSION')) {
+    // Single source of truth for the app version: the VERSION file in the repo root.
+    $versionFile = APP_ROOT . '/VERSION';
+    define('APP_VERSION', is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : '0.0.0');
+}
+
+$configFile = APP_ROOT . '/config.php';
 
 if (!file_exists($configFile)) {
-    header("Location: ../setup.php");
+    header("Location: setup.php");
     exit;
 }
 
@@ -19,4 +29,6 @@ try {
 } catch (PDOException $e) {
     die("Datenbankverbindung fehlgeschlagen: " . $e->getMessage());
 }
-?>
+
+require_once __DIR__ . '/migrations.php';
+autoMigrate($pdo);

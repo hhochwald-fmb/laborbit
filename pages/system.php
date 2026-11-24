@@ -7,69 +7,36 @@ if (!$isManager) {
     return;
 }
 
-$dbVersion    = $pdo->query("SELECT setting_value FROM " . DB_PREFIX . "settings WHERE setting_key = 'db_version'")->fetchColumn() ?: '1.0';
-$latestVersion = LABORBIT_VERSION;
-$isUpToDate   = version_compare($dbVersion, $latestVersion, '>=');
+$readDbVersion = fn() => $pdo->query("SELECT setting_value FROM " . DB_PREFIX . "settings WHERE setting_key = 'db_version'")->fetchColumn() ?: '–';
+$dbVersion     = $readDbVersion();
+$latestVersion = APP_VERSION;
+$isUpToDate    = $dbVersion === $latestVersion;
 
 $updateMessages = [];
 $cleanupMessages = [];
 $orphanedFiles  = [];
 
-// ── DB UPDATE ────────────────────────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['run_update'])) {
-    $cv = $dbVersion;
+$csrfError = $_SERVER['REQUEST_METHOD'] === 'POST' && !csrfValid();
+if ($csrfError) {
+    $updateMessages[] = ['err', "❌ Sicherheitsprüfung fehlgeschlagen (Sitzung abgelaufen?). Bitte erneut versuchen."];
+}
 
-    $migrations = [
-        '1.1' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "media MODIFY type VARCHAR(50) NOT NULL");
-        },
-        '1.2' => function() use ($pdo) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . DB_PREFIX . "device_categories (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "devices ADD COLUMN IF NOT EXISTS category_id INT NULL");
-        },
-        '1.3' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255) NULL AFTER username");
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "experiments ADD COLUMN IF NOT EXISTS created_by INT NULL");
-        },
-        '1.4' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "experiments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
-        },
-        '1.5' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "devices ADD COLUMN IF NOT EXISTS image_path VARCHAR(255) NULL AFTER description");
-        },
-        '1.6' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "topics ADD COLUMN IF NOT EXISTS parent_id INT NULL AFTER name");
-        },
-        '1.7' => function() use ($pdo) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . DB_PREFIX . "locations (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "devices ADD COLUMN IF NOT EXISTS location_id INT NULL AFTER category_id");
-        },
-        '1.8' => function() use ($pdo) {
-            $pdo->exec("ALTER TABLE " . DB_PREFIX . "devices ADD COLUMN IF NOT EXISTS manual_path VARCHAR(255) NULL AFTER image_path");
-        },
-    ];
-
-    $applied = 0;
-    foreach ($migrations as $target => $fn) {
-        if (version_compare($cv, $target, '<')) {
-            try {
-                $fn();
-                $pdo->exec("UPDATE " . DB_PREFIX . "settings SET setting_value = '$target' WHERE setting_key = 'db_version'");
-                $cv = $target;
-                $applied++;
-                $updateMessages[] = ['ok', "✅ Migration auf $target erfolgreich."];
-            } catch (Exception $e) {
-                $updateMessages[] = ['err', "❌ Fehler bei Migration auf $target: " . $e->getMessage()];
-                break;
-            }
+// ── DB UPDATE (Migrationen von Hand anstoßen) ────────────────────────────────
+if (!$csrfError && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['run_update'])) {
+    requireAdmin();
+    try {
+        $log = runMigrations($pdo);
+        foreach ($log as $line) {
+            $updateMessages[] = ['ok', "✅ $line"];
         }
+        $updateMessages[] = $log
+            ? ['ok', "✅ Datenbank ist jetzt auf Version " . APP_VERSION . "."]
+            : ['info', "Datenbank ist bereits auf dem neuesten Stand (" . APP_VERSION . ")."];
+    } catch (Throwable $e) {
+        $updateMessages[] = ['err', "❌ Fehler bei der Migration: " . $e->getMessage()];
     }
-
-    if ($applied === 0) {
-        $updateMessages[] = ['info', "Datenbank ist bereits auf dem neuesten Stand ($cv)."];
-    }
-    $dbVersion  = $cv;
-    $isUpToDate = version_compare($dbVersion, $latestVersion, '>=');
+    $dbVersion  = $readDbVersion();
+    $isUpToDate = $dbVersion === $latestVersion;
 }
 
 // ── ORPHAN CLEANUP ───────────────────────────────────────────────────────────
@@ -140,7 +107,8 @@ foreach (array_keys($dirMapping) as $subdir) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_orphans'])) {
+if (!$csrfError && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_orphans'])) {
+    requireAdmin();
     $toDelete = $_POST['orphan_files'] ?? [];
     $deleted = 0;
     $errors  = 0;
@@ -197,11 +165,11 @@ function fmtBytes(int $bytes): string {
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
                 <div class="text-2xl font-black text-primary"><?php echo htmlspecialchars($dbVersion); ?></div>
-                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium uppercase tracking-wider">Installiert</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium uppercase tracking-wider">Datenbank</div>
             </div>
             <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
                 <div class="text-2xl font-black text-slate-700 dark:text-slate-200"><?php echo htmlspecialchars($latestVersion); ?></div>
-                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium uppercase tracking-wider">Aktuellste</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium uppercase tracking-wider">Code (VERSION)</div>
             </div>
             <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center col-span-2 sm:col-span-1">
                 <?php if ($isUpToDate): ?>
@@ -209,7 +177,7 @@ function fmtBytes(int $bytes): string {
                     <div class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-bold uppercase tracking-wider">Aktuell</div>
                 <?php else: ?>
                     <div class="text-2xl">⬆️</div>
-                    <div class="text-xs text-amber-600 dark:text-amber-400 mt-1 font-bold uppercase tracking-wider">Update verfügbar</div>
+                    <div class="text-xs text-amber-600 dark:text-amber-400 mt-1 font-bold uppercase tracking-wider">Migration nötig</div>
                 <?php endif; ?>
             </div>
         </div>
@@ -230,6 +198,7 @@ function fmtBytes(int $bytes): string {
         <?php endforeach; ?>
 
         <form method="POST">
+            <?php echo csrfField(); ?>
             <button type="submit" name="run_update"
                 class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-blue-600 text-white font-bold rounded-lg shadow-sm shadow-primary/20 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -265,6 +234,7 @@ function fmtBytes(int $bytes): string {
             </div>
         <?php else: ?>
             <form method="POST" onsubmit="return confirm('<?php echo count($allOrphans); ?> markierte Datei(en) wirklich löschen?');">
+                <?php echo csrfField(); ?>
                 <div class="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden mb-4">
                     <table class="w-full text-sm">
                         <thead class="bg-slate-50 dark:bg-slate-700/50">

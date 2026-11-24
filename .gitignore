@@ -17,3 +17,7 @@ uploads/
 # docker-compose.yml
 # docker-entrypoint.sh
 # .dockerignore
+
+# Updater: Backups und temporäre Downloads (storage/.htaccess wird eingecheckt)
+storage/*
+!storage/.htaccess

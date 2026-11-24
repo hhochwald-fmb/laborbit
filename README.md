@@ -17,7 +17,7 @@ LabOrbit ist extrem leichtgewichtig konzipiert und kommt ohne schwerfällige Fra
 - **Webserver:** Apache, Nginx o.ä. (MAMP/XAMPP ideal für Offline-/Lokalbetrieb)
 - **PHP:** Version 8.0 oder neuer
 - **Datenbank:** MySQL oder MariaDB
-- **PHP-Erweiterungen:** `PDO`, `pdo_mysql`, `gd` (für Bildverarbeitung)
+- **PHP-Erweiterungen:** `PDO`, `pdo_mysql`, `gd` (für Bildverarbeitung), `zip` (für Online-Updates)
 - **Schreibrechte:** Der Webserver muss Ordner erstellen und Dateien schreiben dürfen.
 - **Umgebung:** `.user.ini` oder `php.ini` Settings für große Uploads (siehe Installation).
 
@@ -113,15 +113,27 @@ ports:
 ---
 
 ## 🔄 Updates einspielen
-Wenn Aktualisierungen am LabOrbit-Code vorgenommen wurden, die Datenbank-Änderungen erfordern, musst du das System wie folgt updaten:
-1. Lade die neuen Dateien (z.B. aus der `LabOrbit_Release.zip`) per FTP/Dateisystem auf deinen Server.
-2. **WICHTIG:** Wähle beim Hochladen **nur** die Dateien und Ordner aus, die *nicht* deine eigenen Inhalte enthalten. 
-   - Den Ordner `uploads/` habe ich aus der ZIP-Datei **komplett entfernt**. Das Setup-Skript erstellt diesen Ordner bei einer Erstinstallation automatisch. Bei einem Update bleibt dein existierender `uploads/`-Ordner auf dem Server somit vollkommen unberührt.
-   - Deine Konfiguration `includes/config.php` wird von der ZIP-Datei nicht überschrieben, da sie dort nicht enthalten ist.
-3. Logge dich im System als **Manager** ein.
-4. Rufe im Browser manuell die Adresse auf: `http://deinserver/psm/update.php`.
-4. Das Skript prüft, welche Version dein System aktuell hat, und transformiert die Datenbank sicher auf den neuesten Stand.
-5. Es erscheint eine Erfolgsmeldung – fertig! Du kannst nun zum Dashboard wechseln.
+
+### Online-Update (empfohlen)
+1. Als **Manager** einloggen und im Admin-Bereich **🔄 Updates** öffnen.
+2. **„Nach Updates suchen“** klicken – LabOrbit fragt das neueste Release auf GitHub ab.
+3. Ist eine neuere Version verfügbar, erscheinen die Release-Notizen und der Button **„Jetzt installieren“**.
+4. LabOrbit lädt das Paket herunter, prüft es, sichert die alten Dateien nach `storage/backups/` und installiert die neue Version. Datenbank-Änderungen werden beim nächsten Seitenaufruf automatisch durchgeführt.
+
+`config.php`, `uploads/` und `storage/` werden dabei **nie** verändert. Auf dem Server wird kein git benötigt.
+
+**Voraussetzungen:** PHP-Erweiterung `zip`, ausgehende HTTPS-Verbindungen zu GitHub (cURL oder `allow_url_fopen`) und Schreibrechte des Webservers auf die App-Dateien.
+
+Ohne Internetzugang kann auf derselben Seite ein Update-ZIP (z. B. „Source code (zip)“ eines Releases) **von Hand hochgeladen** werden – es wird genauso geprüft und installiert.
+
+> Läuft LabOrbit als **git-Checkout** auf dem Server, ist das Online-Update deaktiviert – dann einfach `git pull` verwenden.
+> Bei **Docker** steckt der Code im Image: dort `git pull` und `docker compose build && docker compose up -d`.
+> Unter **Nginx** greift `storage/.htaccess` nicht – dann den Ordner `storage/` in der Server-Konfiguration sperren.
+
+### Datenbank von Hand migrieren
+Die Migrationen laufen automatisch, sobald sich die Version ändert. Falls nötig, lassen sie sich unter **🛠️ System → „Datenbank jetzt prüfen & updaten“** (oder über `update.php`) erneut anstoßen – das ist beliebig oft sicher möglich.
+
+Wie neue Versionen veröffentlicht werden, steht in [ENTWICKLUNG.md](ENTWICKLUNG.md).
 
 ---
 
@@ -145,4 +157,6 @@ Wenn du als Manager (Admin) dein Passwort vergessen hast, gibt es einen "Notfall
 - `/pages` - Einzelne Unterseiten, die vom Dashboard per `?page=` dynamisch geladen werden (z.B. `dashboard.php`, `experiments.php`).
 - `/uploads` - Die physischen Speicherorte für Nutzer-Medien (Bilder, PDFs, Videos). Muss Schreibrechte (`777` / `755`) für PHP besitzen!
 - `index.php` - Der zentrale Einstiegspunkt (Routing & UI/Layout).
-- `update.php` - Migrations-Tool für Datenbankänderungen nach Updates.
+- `update.php` - Notfall-Aufruf der Datenbank-Migrationen (laufen normalerweise automatisch).
+- `VERSION` - Versionsnummer der App.
+- `/storage` - Backups und temporäre Dateien des Updaters (per `.htaccess` gesperrt).

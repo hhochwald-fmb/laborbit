@@ -128,4 +128,53 @@ function getHumanFilename($filepath) {
     }
     return $filepath; // Fallback for images and old uploads
 }
-?>
+
+/**
+ * CSRF-Schutz: Token pro Session, als verstecktes Feld in jedes POST-Formular.
+ */
+function csrfToken(): string {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function csrfField(): string {
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(csrfToken()) . '">';
+}
+
+function csrfValid(): bool {
+    $sent = $_POST['csrf_token'] ?? '';
+    return is_string($sent) && !empty($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $sent);
+}
+
+function isAdmin(): bool {
+    return ($_SESSION['role'] ?? null) === 'manager';
+}
+
+/** Bricht mit 403 ab, wenn kein Manager (Admin) eingeloggt ist. */
+function requireAdmin(): void {
+    if (!isAdmin()) {
+        while (ob_get_level() > 0) ob_end_clean();
+        http_response_code(403);
+        exit('Zugriff verweigert. Nur für Manager.');
+    }
+}
+
+/** Flash-Meldung für den nächsten Seitenaufruf (nach Redirect). */
+function setFlash(string $type, string $message): void {
+    $_SESSION['flash'][] = [$type, $message];
+}
+
+function takeFlashes(): array {
+    $flashes = $_SESSION['flash'] ?? [];
+    unset($_SESSION['flash']);
+    return $flashes;
+}
+
+/** Leitet um, auch wenn das Layout schon in den Ausgabepuffer geschrieben wurde. */
+function redirectTo(string $url): void {
+    while (ob_get_level() > 0) ob_end_clean();
+    header('Location: ' . $url);
+    exit;
+}

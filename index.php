@@ -1,7 +1,6 @@
 <?php
 ob_start();
-define('LABORBIT_VERSION', '1.8');
-require_once 'includes/db.php';
+require_once 'includes/db.php'; // definiert APP_VERSION (aus der Datei VERSION) und migriert bei Bedarf
 require_once 'includes/functions.php';
 
 // Login Check
@@ -235,6 +234,7 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
                         $navItem('users', '👤', 'Benutzer');
                         $navItem('settings', '⚙️', 'Einstellungen');
                         $navItem('system', '🛠️', 'System');
+                        $navItem('updates', '🔄', 'Updates');
                         ?>
                     </div>
                 <?php endif; ?>
@@ -254,7 +254,7 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
             <main class="flex-1 p-6 bg-slate-50 dark:bg-slate-900 overflow-y-auto">
                 <?php 
                     $page = $_GET['page'] ?? 'dashboard';
-                    $allowedPages = ['dashboard', 'experiments', 'devices', 'device_categories', 'locations', 'classes', 'topics', 'users', 'settings', 'profile', 'system'];
+                    $allowedPages = ['dashboard', 'experiments', 'devices', 'device_categories', 'locations', 'classes', 'topics', 'users', 'settings', 'profile', 'system', 'updates'];
                     if (in_array($page, $allowedPages)) {
                         $pageFile = __DIR__ . '/pages/' . $page . '.php';
                         if (file_exists($pageFile)) {
@@ -274,7 +274,7 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
                     <span class="mx-2 text-slate-300 dark:text-slate-600">|</span>
                     <a href="#" class="text-primary hover:underline">Impressum</a>
                     <span class="mx-2 text-slate-300 dark:text-slate-600">|</span>
-                    <span class="text-slate-400 dark:text-slate-500">LabOrbit v<?php echo htmlspecialchars($settings['db_version'] ?? LABORBIT_VERSION); ?></span>
+                    <span class="text-slate-400 dark:text-slate-500">LabOrbit v<?php echo htmlspecialchars(APP_VERSION); ?></span>
                 </p>
             </footer>
         </div>

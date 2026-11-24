@@ -4,3 +4,5 @@
 docker-compose*.yml
 uploads/
 config.php
+storage/tmp/
+storage/backups/
