@@ -52,7 +52,7 @@ if ($canEdit && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'edit' || $action === 'add') {
-    $device = ['id' => 0, 'name' => '', 'location_id' => null, 'location_description' => '', 'description' => '', 'category_id' => null, 'image_path' => null];
+    $device = ['id' => 0, 'name' => '', 'location_id' => null, 'location_description' => '', 'description' => '', 'category_id' => null, 'image_path' => null, 'manual_path' => null];
     if ($action === 'edit' && $editId > 0) {
         $stmt = $pdo->prepare("SELECT * FROM " . DB_PREFIX . "devices WHERE id = ?");
         $stmt->execute([$editId]);
@@ -108,7 +108,7 @@ if ($action === 'edit' || $action === 'add') {
                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Foto des Geräts (Optional)</label>
                 <?php if($device['image_path']): ?>
                     <div class="mb-2">
-                        <img src="uploads/devices/<?php echo $device['image_path']; ?>" class="h-24 w-auto rounded shadow border border-slate-200 dark:border-slate-600">
+                        <img src="uploads/devices/<?php echo htmlspecialchars($device['image_path']); ?>" class="h-24 w-auto rounded shadow border border-slate-200 dark:border-slate-600">
                     </div>
                 <?php endif; ?>
                 <input type="file" name="image" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-blue-600 dark:file:bg-slate-700 dark:hover:file:bg-slate-600">
@@ -223,10 +223,10 @@ if ($action === 'edit' || $action === 'add') {
         
         experiments.forEach(exp => {
             const li = document.createElement('li');
-            li.innerHTML = `<a href="?page=experiments&action=view&id=${exp.exp_id}" class="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-primary/5 hover:border-primary/20 transition-all group">
+            li.innerHTML = `<a href="?page=experiments&action=view&id=${encodeURIComponent(exp.exp_id)}" class="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-primary/5 hover:border-primary/20 transition-all group">
                 <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xl">🔬</div>
                 <div class="flex-1">
-                    <div class="font-bold text-slate-700 dark:text-slate-300 group-hover:text-primary transition-colors leading-snug">${exp.exp_title}</div>
+                    <div class="font-bold text-slate-700 dark:text-slate-300 group-hover:text-primary transition-colors leading-snug">${escHtml(exp.exp_title)}</div>
                     <div class="text-[10px] text-slate-400 font-medium uppercase mt-0.5">Zum Experiment details &rarr;</div>
                 </div>
             </a>`;
@@ -344,7 +344,7 @@ if ($action === 'edit' || $action === 'add') {
                             <?php endif; ?>
 
                             <?php if(count($deviceUsages) > 0): ?>
-                                <button onclick='openUsageModal(<?php echo json_encode($d["name"]); ?>, <?php echo json_encode(json_encode($deviceUsages)); ?>)' class="text-[10px] font-bold text-primary hover:underline uppercase tracking-tighter">
+                                <button onclick='openUsageModal(<?php echo json_encode($d["name"], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode(json_encode($deviceUsages), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)' class="text-[10px] font-bold text-primary hover:underline uppercase tracking-tighter">
                                     🔬 <?php echo count($deviceUsages); ?> Instanzen
                                 </button>
                             <?php endif; ?>
@@ -363,7 +363,7 @@ if ($action === 'edit' || $action === 'add') {
                         <?php endif; ?>
                         
                         <?php if($d['manual_path']): ?>
-                            <a href="uploads/devices/<?php echo $d['manual_path']; ?>" target="_blank" class="absolute top-3 right-3 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-lg transition-colors flex items-center gap-1 z-10">
+                            <a href="uploads/devices/<?php echo htmlspecialchars($d['manual_path']); ?>" target="_blank" class="absolute top-3 right-3 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-lg transition-colors flex items-center gap-1 z-10">
                                 <span class="text-xs">📄</span> PDF
                             </a>
                         <?php endif; ?>
@@ -452,7 +452,7 @@ if ($action === 'edit' || $action === 'add') {
                                         <div class="flex items-center gap-2">
                                             <div class="text-sm font-bold text-slate-900 dark:text-white"><?php echo htmlspecialchars($d['name']); ?></div>
                                             <?php if($d['manual_path']): ?>
-                                                <a href="uploads/devices/<?php echo $d['manual_path']; ?>" target="_blank" class="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/40 text-[9px] font-black rounded text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800" title="PDF Anleitung öffnen">PDF</a>
+                                                <a href="uploads/devices/<?php echo htmlspecialchars($d['manual_path']); ?>" target="_blank" class="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/40 text-[9px] font-black rounded text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800" title="PDF Anleitung öffnen">PDF</a>
                                             <?php endif; ?>
                                         </div>
                                         <div class="flex items-center gap-3 mt-1">
@@ -460,7 +460,7 @@ if ($action === 'edit' || $action === 'add') {
                                                 <div class="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 max-w-sm"><?php echo htmlspecialchars($d['description']); ?></div>
                                             <?php endif; ?>
                                             <?php if(count($deviceUsages) > 0): ?>
-                                                <button onclick='openUsageModal(<?php echo json_encode($d["name"]); ?>, <?php echo json_encode(json_encode($deviceUsages)); ?>)' class="text-[10px] font-bold text-primary hover:underline whitespace-nowrap">
+                                                <button onclick='openUsageModal(<?php echo json_encode($d["name"], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode(json_encode($deviceUsages), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)' class="text-[10px] font-bold text-primary hover:underline whitespace-nowrap">
                                                     🔬 In <?php echo count($deviceUsages); ?> Experimenten
                                                 </button>
                                             <?php endif; ?>

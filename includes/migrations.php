@@ -159,6 +159,19 @@ function runMigrations(PDO $pdo): array
     $stmt = $pdo->prepare("INSERT IGNORE INTO " . migTable('settings') . " (setting_key, setting_value) VALUES (?, ?)");
     $stmt->execute(['update_repo', 'hhochwald-fmb/laborbit']);
 
+    // 1.9.1 – Login-Bremse gegen Passwort-Raten
+    $pdo->exec("CREATE TABLE IF NOT EXISTS " . migTable('login_attempts') . " (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ip VARCHAR(45) NOT NULL,
+        attempted_at DATETIME NOT NULL,
+        INDEX idx_ip_time (ip, attempted_at)
+    )");
+
+    // 1.9.1 – Upload-Ordner gegen Skriptausführung absichern
+    if (ensureUploadsProtection()) {
+        $log[] = 'uploads/.htaccess angelegt (keine Skriptausführung im Upload-Ordner)';
+    }
+
     // ── Neue Schritte hier unten anhängen ──────────────────────────────────
 
     migSetSetting($pdo, 'db_version', APP_VERSION);
@@ -204,4 +217,40 @@ function autoMigrate(PDO $pdo): void
             $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($lockName) . ")");
         }
     }
+}
+
+/**
+ * Legt uploads/.htaccess an bzw. aktualisiert sie (nur wenn sie von LabOrbit stammt).
+ * uploads/ wird vom Updater nie angefasst, deshalb erledigt das die Migration.
+ */
+function ensureUploadsProtection(): bool
+{
+    $dir = dirname(__DIR__) . '/uploads';
+    if (!is_dir($dir)) {
+        return false;
+    }
+    $file = $dir . '/.htaccess';
+    $content = <<<'HTACCESS'
+# LabOrbit: Upload-Ordner absichern (automatisch erzeugt, wird bei Updates aktualisiert)
+# Keine Skripte und kein aktives HTML aus dem Upload-Ordner ausführen bzw. ausliefern.
+<FilesMatch "(?i)\.(php\d*|phtml|phar|pht|phps|inc|cgi|pl|py|sh|html?|xhtml|shtml|svgz?|js|mjs|htaccess|user\.ini)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>
+HTACCESS;
+    if (is_file($file)) {
+        $current = (string) file_get_contents($file);
+        if ($current === $content || strpos($current, '# LabOrbit:') !== 0) {
+            return false; // aktuell oder vom Admin selbst angelegt – nicht überschreiben
+        }
+    }
+    return @file_put_contents($file, $content, LOCK_EX) !== false;
 }

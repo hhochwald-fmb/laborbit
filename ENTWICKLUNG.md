@@ -62,3 +62,19 @@ Neue Dateien in anderen Ordnern als den oben genannten werden **nicht** installi
 - `autoMigrate()` läuft bei jedem Seitenaufruf (in `includes/db.php`): Weicht `db_version` von
   `APP_VERSION` ab, laufen die Migrationen einmal automatisch. Fehler gehen ins PHP-error_log.
 - Von Hand: Admin → System → „Datenbank jetzt prüfen & updaten“ (oder `update.php`).
+
+## Sicherheitsregeln für neuen Code
+
+- **Formulare:** Jedes `<form method="post">` bekommt das CSRF-Token automatisch (Output-Filter in
+  `index.php`). POST-Anfragen ohne gültiges Token werden verworfen, bevor eine Seite sie sieht.
+  Daten ändernde Aktionen deshalb **nie** per GET-Link auslösen.
+- **Uploads:** nur über die `handle…Upload()`-Funktionen in `includes/functions.php`. Sie bestimmen
+  Typ und Endung aus dem Dateiinhalt, nie aus `$_FILES['type']` oder dem Dateinamen.
+  `uploads/.htaccess` (von der Migration angelegt) verbietet zusätzlich PHP/HTML/SVG/JS im Upload-Ordner.
+- **Ausgabe:** Text immer mit `htmlspecialchars()`. HTML aus dem Trix-Editor nur über
+  `sanitizeRichText()` speichern **und** ausgeben. In JavaScript Daten vor `innerHTML` mit
+  `escHtml()` maskieren; `json_encode()` in HTML-Attributen/Skripten mit
+  `JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP`.
+- **SQL:** nur Prepared Statements; `ORDER BY` nur aus festen Whitelists.
+- **Login:** Session-Cookie `HttpOnly`/`SameSite=Lax`, neue Session-ID beim Login, Sperre nach
+  10 Fehlversuchen pro IP in 15 Minuten (Tabelle `login_attempts`), Abmeldung nach 8 h Inaktivität.

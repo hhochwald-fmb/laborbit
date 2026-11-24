@@ -5,18 +5,32 @@ $configFile = __DIR__ . '/config.php';
 $step = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 $message = '';
 
+// Sicherheits-Sperre: Sobald ein Manager existiert, ist das Setup gesperrt.
+// Ist eine config.php vorhanden, die Datenbank aber nicht erreichbar, wird ebenfalls gesperrt –
+// sonst könnte jemand bei einem DB-Ausfall die Konfiguration überschreiben.
+function setupLocked(string $reason): void {
+    http_response_code(403);
+    $reason = htmlspecialchars($reason);
+    die("<!DOCTYPE html><html lang='de'><head><meta charset='UTF-8'><title>Setup Gesperrt</title><style>body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;} .box { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-width: 400px; text-align: center; } h1 { color: #dc2626; margin-top:0;}</style></head><body><div class='box'><h1>Sicherheits-Sperre</h1><p>$reason</p><p>Aus Sicherheitsgründen wurde <code>setup.php</code> gesperrt. Bitte lösche diese Datei von deinem Server.</p><a href='index.php' style='display:inline-block; margin-top:1rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px;'>Zum Login</a></div></body></html>");
+}
+
 if (file_exists($configFile)) {
     require_once $configFile;
+    $prefix = defined('DB_PREFIX') ? DB_PREFIX : '';
     try {
         $checkPdo = new PDO("mysql:host=" . (defined('DB_HOST') ? DB_HOST : 'localhost') . ";dbname=" . (defined('DB_NAME') ? DB_NAME : 'psm_db') . ";charset=utf8mb4", defined('DB_USER') ? DB_USER : 'root', defined('DB_PASS') ? DB_PASS : '');
-        $tableExists = $checkPdo->query("SHOW TABLES LIKE 'users'")->rowCount() > 0;
-        if ($tableExists) {
-            $managerCount = $checkPdo->query("SELECT COUNT(*) FROM " . DB_PREFIX . "users WHERE role = 'manager'")->fetchColumn();
+        $checkPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $stmt = $checkPdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $stmt->execute([$prefix . 'users']);
+        if ((int) $stmt->fetchColumn() > 0) {
+            $managerCount = $checkPdo->query("SELECT COUNT(*) FROM `" . str_replace('`', '', $prefix) . "users` WHERE role = 'manager'")->fetchColumn();
             if ($managerCount > 0) {
-                die("<!DOCTYPE html><html lang='de'><head><meta charset='UTF-8'><title>Setup Gesperrt</title><style>body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;} .box { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-width: 400px; text-align: center; } h1 { color: #dc2626; margin-top:0;}</style></head><body><div class='box'><h1>Sicherheits-Sperre</h1><p>Das Setup wurde bereits abgearbeitet und das System besitzt einen Administrator.</p><p>Aus Sicherheitsgründen wurde <code>setup.php</code> gesperrt. Bitte lösche diese Datei von deinem Server.</p><a href='index.php' style='display:inline-block; margin-top:1rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px;'>Zum Login</a></div></body></html>");
+                setupLocked('Das Setup wurde bereits abgearbeitet und das System besitzt einen Administrator.');
             }
         }
-    } catch (Exception $e) {}
+    } catch (Exception $e) {
+        setupLocked('Es existiert bereits eine config.php, aber die Datenbank ist nicht erreichbar. Wenn du LabOrbit wirklich neu einrichten willst, lösche zuerst die config.php per FTP.');
+    }
 }
 
 // Step 1: Database Setup
@@ -25,8 +39,16 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $dbUser = $_POST['db_user'] ?? 'root';
     $dbPass = $_POST['db_pass'] ?? 'root';
     $dbName = $_POST['db_name'] ?? 'psm_db';
-    $dbPrefix = $_POST['db_prefix'] ?? '';
+    $dbPrefix = trim($_POST['db_prefix'] ?? '');
 
+    // Eingaben prüfen: Präfix und DB-Name landen in SQL-Bezeichnern, alles landet in config.php.
+    if (!preg_match('/^[A-Za-z0-9_]{0,20}$/', $dbPrefix)) {
+        $message = "Ungültiges Tabellen-Präfix (erlaubt: Buchstaben, Ziffern, Unterstrich).";
+    } elseif (!preg_match('/^[A-Za-z0-9_-]{1,64}$/', $dbName)) {
+        $message = "Ungültiger Datenbankname (erlaubt: Buchstaben, Ziffern, _ und -).";
+    } elseif (!preg_match('/^[A-Za-z0-9_.:\[\]-]{1,255}$/', $dbHost)) {
+        $message = "Ungültiger Datenbank-Host.";
+    } else
     // Test connection
     try {
         // First approach: try connecting to the specific database directly (perfect for shared hosting where DB is manually created)
@@ -40,12 +62,13 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbName` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         }
         
+        // var_export() maskiert die Werte sicher – kein Einschleusen von PHP-Code möglich.
         $configContent = "<?php\n"
-            . "define('DB_HOST', '$dbHost');\n"
-            . "define('DB_USER', '$dbUser');\n"
-            . "define('DB_PASS', '$dbPass');\n"
-            . "define('DB_NAME', '$dbName');\n"
-            . "define('DB_PREFIX', '$dbPrefix');\n\n"
+            . "define('DB_HOST', " . var_export((string) $dbHost, true) . ");\n"
+            . "define('DB_USER', " . var_export((string) $dbUser, true) . ");\n"
+            . "define('DB_PASS', " . var_export((string) $dbPass, true) . ");\n"
+            . "define('DB_NAME', " . var_export((string) $dbName, true) . ");\n"
+            . "define('DB_PREFIX', " . var_export((string) $dbPrefix, true) . ");\n\n"
             . "// ==========================================\n"
             . "// NOTFALL-LOGIN FÜR ADMINS\n"
             . "// ==========================================\n"

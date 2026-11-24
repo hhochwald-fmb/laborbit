@@ -13,8 +13,8 @@ if ($canEdit && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_expe
     
     $title = trim($_POST['title']);
     $description = strip_tags(trim($_POST['description']));
-    $setup = trim($_POST['setup_instructions']);
-    $tips = trim($_POST['tips']);
+    $setup = sanitizeRichText(trim($_POST['setup_instructions'] ?? ''));
+    $tips = sanitizeRichText(trim($_POST['tips'] ?? ''));
     $measurements = strip_tags(trim($_POST['measurements']));
     
     if ($editModeId > 0) {
@@ -89,7 +89,7 @@ if ($canEdit && isset($_POST['delete_experiment'])) {
     exit(header("Location: ?page=experiments"));
 }
 
-if ($canEdit && isset($_GET['delete_media']) && isset($_GET['id'])) {
+if ($canEdit && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['delete_media']) && isset($_GET['id'])) {
     $stmt = $pdo->prepare("SELECT type, file_path FROM " . DB_PREFIX . "media WHERE id = ? AND experiment_id = ?");
     $stmt->execute([(int)$_GET['delete_media'], $expId]);
     if ($m = $stmt->fetch()) {
@@ -245,7 +245,7 @@ if (($action === 'add' || $action === 'edit') && $canEdit) {
                         Array.from(accumulator.files).forEach((file, index) => {
                             const item = document.createElement('div');
                             item.className = 'flex items-center justify-between bg-slate-100 dark:bg-slate-600 p-1 rounded';
-                            item.innerHTML = `<span class="truncate pr-2">${file.name} (${(file.size/1024).toFixed(0)} KB)</span>`;
+                            item.innerHTML = `<span class="truncate pr-2">${escHtml(file.name)} (${(file.size/1024).toFixed(0)} KB)</span>`;
                             
                             const removeBtn = document.createElement('button');
                             removeBtn.type = 'button';
@@ -276,7 +276,7 @@ if (($action === 'add' || $action === 'edit') && $canEdit) {
                         <?php foreach($mediaFiles as $m): ?>
                             <li class="flex justify-between text-sm bg-white dark:bg-slate-800 p-2 rounded shadow-sm">
                                 <span class="truncate dark:text-slate-300 mr-2">[<?php echo strtoupper($m['type']); ?>] <?php echo htmlspecialchars(getHumanFilename($m['file_path'])); ?></span>
-                                <a href="?page=experiments&action=edit&id=<?php echo $expId; ?>&delete_media=<?php echo $m['id']; ?>" class="text-red-500 hover:underline flex-shrink-0" onclick="return confirm('Datei löschen?')">Löschen</a>
+                                <button type="submit" formaction="?page=experiments&action=edit&id=<?php echo (int)$expId; ?>&delete_media=<?php echo (int)$m['id']; ?>" formnovalidate class="text-red-500 hover:underline flex-shrink-0" onclick="return confirm('Datei löschen?')">Löschen</button>
                             </li>
                         <?php endforeach; ?>
                     </ul>
@@ -401,7 +401,7 @@ if (($action === 'add' || $action === 'edit') && $canEdit) {
                             'image' => $d['image_path'] ? 'uploads/devices/' . $d['image_path'] : null
                         ];
                     }
-                    echo json_encode($jsDevices); 
+                    echo json_encode($jsDevices, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); 
                 ?>;
                 
                 let selectedDeviceIds = <?php echo json_encode(array_map('intval', $selectedDevices)); ?>;
@@ -482,15 +482,15 @@ if (($action === 'add' || $action === 'edit') && $canEdit) {
                             
                             div.innerHTML = `
                                 <div class="aspect-square bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden border-b border-slate-100 dark:border-slate-700">
-                                    ${d.image ? `<img src="${d.image}" class="w-full h-full object-cover">` : `<span class="text-3xl opacity-20">🔌</span>`}
+                                    ${d.image ? `<img src="${escHtml(d.image)}" class="w-full h-full object-cover">` : `<span class="text-3xl opacity-20">🔌</span>`}
                                 </div>
                                 <div class="p-3">
                                     <div class="flex items-start justify-between gap-2">
-                                        <div class="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 leading-tight">${d.name}</div>
+                                        <div class="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 leading-tight">${escHtml(d.name)}</div>
                                         <input type="checkbox" ${isSelected ? 'checked' : ''} class="rounded border-slate-300 text-primary mt-0.5" onclick="event.stopPropagation()">
                                     </div>
-                                    <div class="text-[10px] text-slate-500 mt-1 truncate">📍 ${d.location}</div>
-                                    ${d.cat_name ? `<div class="mt-1"><span class="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-[9px] font-bold text-slate-500 uppercase tracking-tighter">${d.cat_name}</span></div>` : ''}
+                                    <div class="text-[10px] text-slate-500 mt-1 truncate">📍 ${escHtml(d.location)}</div>
+                                    ${d.cat_name ? `<div class="mt-1"><span class="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-[9px] font-bold text-slate-500 uppercase tracking-tighter">${escHtml(d.cat_name)}</span></div>` : ''}
                                 </div>
                             `;
                             grid.appendChild(div);
@@ -522,10 +522,10 @@ if (($action === 'add' || $action === 'edit') && $canEdit) {
                                 div.className = 'flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700 group';
                                 div.innerHTML = `
                                     <div class="flex items-center gap-2 overflow-hidden">
-                                        ${device.image ? `<img src="${device.image}" class="w-6 h-6 rounded object-cover">` : `<span class="text-xs">🔌</span>`}
+                                        ${device.image ? `<img src="${escHtml(device.image)}" class="w-6 h-6 rounded object-cover">` : `<span class="text-xs">🔌</span>`}
                                         <div class="truncate">
-                                            <div class="text-xs font-bold dark:text-white truncate">${device.name}</div>
-                                            <div class="text-[9px] text-slate-500 truncate">📍 ${device.location}</div>
+                                            <div class="text-xs font-bold dark:text-white truncate">${escHtml(device.name)}</div>
+                                            <div class="text-[9px] text-slate-500 truncate">📍 ${escHtml(device.location)}</div>
                                         </div>
                                     </div>
                                     <button type="button" onclick="removeDevice(${id})" class="text-slate-400 hover:text-red-500 p-1 transition-colors">
@@ -667,7 +667,7 @@ elseif ($action === 'view' && $expId > 0) {
                         </h4>
                         <div class="flex flex-wrap gap-3">
                             <?php foreach($riskAssessments as $ra): ?>
-                                <a href="uploads/risk_assessments/<?php echo $ra['file_path']; ?>" target="_blank" class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-red-900/50 border border-red-200 dark:border-red-800 rounded-lg hover:shadow-md transition-all group-hover:scale-[1.02]">
+                                <a href="uploads/risk_assessments/<?php echo htmlspecialchars($ra['file_path']); ?>" target="_blank" class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-red-900/50 border border-red-200 dark:border-red-800 rounded-lg hover:shadow-md transition-all group-hover:scale-[1.02]">
                                     <span class="text-2xl"><?php echo preg_match('/\.(jpg|jpeg|png|webp)$/i', $ra['file_path']) ? '🖼️' : '📄'; ?></span>
                                     <div>
                                         <div class="text-sm font-bold text-red-900 dark:text-red-200"><?php echo htmlspecialchars(getHumanFilename($ra['file_path'])); ?></div>
@@ -682,7 +682,7 @@ elseif ($action === 'view' && $expId > 0) {
                 <?php if($exp['setup_instructions']): ?>
                     <h3 class="text-xl font-semibold dark:text-white mt-8 mb-3">Aufbaubeschreibung</h3>
                     <div class="trix-content prose dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
-                        <?php echo $exp['setup_instructions']; ?>
+                        <?php echo sanitizeRichText($exp['setup_instructions']); ?>
                     </div>
                 <?php endif; ?>
 
@@ -690,7 +690,7 @@ elseif ($action === 'view' && $expId > 0) {
                     <?php if($exp['tips']): ?>
                     <div class="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-lg border border-amber-200 dark:border-amber-900/50">
                         <h4 class="font-bold text-amber-800 dark:text-amber-500 mb-2 flex items-center">💡 Tipps & Hinweise</h4>
-                        <div class="trix-content text-amber-900 dark:text-amber-200 text-sm"><?php echo $exp['tips']; ?></div>
+                        <div class="trix-content text-amber-900 dark:text-amber-200 text-sm"><?php echo sanitizeRichText($exp['tips']); ?></div>
                     </div>
                     <?php endif; ?>
                     
@@ -704,7 +704,7 @@ elseif ($action === 'view' && $expId > 0) {
                                 <?php foreach($measurementsMedia as $m): 
                                     $isImg = preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $m['file_path']);
                                 ?>
-                                    <a href="uploads/measurements/<?php echo $m['file_path']; ?>" target="_blank" class="flex items-center p-2 rounded bg-white hover:bg-emerald-100 dark:bg-slate-800 dark:border-emerald-700 transition">
+                                    <a href="uploads/measurements/<?php echo htmlspecialchars($m['file_path']); ?>" target="_blank" class="flex items-center p-2 rounded bg-white hover:bg-emerald-100 dark:bg-slate-800 dark:border-emerald-700 transition">
                                         <span class="mr-2 text-xl"><?php echo $isImg ? '🖼️' : '📄'; ?></span>
                                         <span class="text-xs font-semibold text-emerald-800 dark:text-emerald-300 truncate" title="<?php echo htmlspecialchars(getHumanFilename($m['file_path'])); ?>"><?php echo htmlspecialchars(getHumanFilename($m['file_path'])); ?></span>
                                     </a>
@@ -722,7 +722,7 @@ elseif ($action === 'view' && $expId > 0) {
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <?php $idx=0; foreach($photos as $p): ?>
                         <div onclick="openLb(<?php echo $idx++; ?>)" class="cursor-pointer block aspect-video bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 hover:opacity-80 transition relative group">
-                            <img src="uploads/photos/<?php echo $p['file_path']; ?>" class="w-full h-full object-cover">
+                            <img src="uploads/photos/<?php echo htmlspecialchars($p['file_path']); ?>" class="w-full h-full object-cover">
                             <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><div class="bg-black/50 text-white rounded-full p-2 backdrop-blur-sm">🔍</div></div>
                         </div>
                     <?php endforeach; ?>
@@ -737,7 +737,7 @@ elseif ($action === 'view' && $expId > 0) {
                     <?php foreach($videos as $v): ?>
                         <div class="bg-slate-50 dark:bg-slate-900 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
                             <video controls class="w-full h-auto aspect-video">
-                                <source src="uploads/videos/<?php echo $v['file_path']; ?>" type="video/<?php echo pathinfo($v['file_path'], PATHINFO_EXTENSION); ?>">
+                                <source src="uploads/videos/<?php echo htmlspecialchars($v['file_path']); ?>" type="video/<?php echo htmlspecialchars(pathinfo($v['file_path'], PATHINFO_EXTENSION)); ?>">
                                 Dein Browser unterstützt keine Videos.
                             </video>
                             <div class="p-2 text-xs font-semibold text-slate-600 dark:text-slate-400 text-center truncate">
@@ -789,7 +789,7 @@ elseif ($action === 'view' && $expId > 0) {
                 <div class="bg-slate-50 px-5 py-3 border-b"><h3 class="font-bold text-sm uppercase">PDFs</h3></div>
                 <div class="p-5"><ul class="space-y-3">
                     <?php foreach($pdfs as $p): ?>
-                        <li><a href="uploads/pdfs/<?php echo $p['file_path']; ?>" target="_blank" class="flex p-3 rounded-lg border hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700/50 transition"><span class="text-red-500 mr-2">📄</span><span class="text-sm font-medium text-slate-800 dark:text-slate-200 truncate"><?php echo htmlspecialchars(getHumanFilename($p['file_path'])); ?></span></a></li>
+                        <li><a href="uploads/pdfs/<?php echo htmlspecialchars($p['file_path']); ?>" target="_blank" class="flex p-3 rounded-lg border hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700/50 transition"><span class="text-red-500 mr-2">📄</span><span class="text-sm font-medium text-slate-800 dark:text-slate-200 truncate"><?php echo htmlspecialchars(getHumanFilename($p['file_path'])); ?></span></a></li>
                     <?php endforeach; ?>
                 </ul></div>
             </div>

@@ -12,9 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = trim($_POST['username']);
         $full_name = trim($_POST['full_name'] ?? '');
         $password = $_POST['password'];
-        $role = $_POST['role'];
+        $role = $_POST['role'] ?? '';
         
-        if (strlen($password) < 6) {
+        if (!in_array($role, ['manager', 'teacher', 'viewer'], true)) {
+            $error = "Ungültige Rolle.";
+        } elseif ($username === '') {
+            $error = "Bitte einen Benutzernamen angeben.";
+        } elseif (strlen($password) < 6) {
             $error = "Passwort muss mindestens 6 Zeichen lang sein.";
         } else {
             // Check if username exists
@@ -26,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("INSERT INTO " . DB_PREFIX . "users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)");
                 $stmt->execute([$username, $full_name, $hash, $role]);
-                $success = "Benutzer '$username' erfolgreich angelegt.";
+                $success = "Benutzer '" . htmlspecialchars($username) . "' erfolgreich angelegt.";
             }
         }
     } elseif (isset($_POST['delete_user'])) {

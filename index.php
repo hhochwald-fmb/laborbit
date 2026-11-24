@@ -3,49 +3,115 @@ ob_start();
 require_once 'includes/db.php'; // definiert APP_VERSION (aus der Datei VERSION) und migriert bei Bedarf
 require_once 'includes/functions.php';
 
+const LOGIN_MAX_FAILS   = 10;      // Fehlversuche pro IP …
+const LOGIN_WINDOW_MIN  = 15;      // … innerhalb von so vielen Minuten
+const SESSION_IDLE_SECS = 8 * 3600; // automatische Abmeldung nach 8 Stunden Inaktivität
+
+function loginClientIp(): string {
+    return substr((string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 0, 45);
+}
+
+function loginIsBlocked(PDO $pdo): bool {
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM " . DB_PREFIX . "login_attempts WHERE ip = ? AND attempted_at > (NOW() - INTERVAL " . LOGIN_WINDOW_MIN . " MINUTE)");
+        $stmt->execute([loginClientIp()]);
+        return (int) $stmt->fetchColumn() >= LOGIN_MAX_FAILS;
+    } catch (PDOException $e) {
+        return false;
+    }
+}
+
+function loginRecordFailure(PDO $pdo): void {
+    try {
+        $pdo->prepare("INSERT INTO " . DB_PREFIX . "login_attempts (ip, attempted_at) VALUES (?, NOW())")->execute([loginClientIp()]);
+        $pdo->exec("DELETE FROM " . DB_PREFIX . "login_attempts WHERE attempted_at < (NOW() - INTERVAL 1 DAY)");
+    } catch (PDOException $e) {
+        // Tabelle fehlt (Migration noch nicht gelaufen) – Login trotzdem möglich.
+    }
+}
+
+function loginSucceed(PDO $pdo, array $user): void {
+    try {
+        $pdo->prepare("DELETE FROM " . DB_PREFIX . "login_attempts WHERE ip = ?")->execute([loginClientIp()]);
+    } catch (PDOException $e) {
+    }
+    session_regenerate_id(true); // Schutz vor Session Fixation
+    unset($_SESSION['csrf_token']);
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['full_name'] = $user['full_name'] ?? null;
+    $_SESSION['role'] = $user['role'];
+    $_SESSION['last_activity'] = time();
+    redirectTo('index.php');
+}
+
+// Logout
+if (isset($_GET['logout'])) {
+    $_SESSION = [];
+    session_destroy();
+    redirectTo('index.php');
+}
+
+// Automatische Abmeldung nach längerer Inaktivität
+if (isset($_SESSION['user_id'])) {
+    if (time() - (int) ($_SESSION['last_activity'] ?? time()) > SESSION_IDLE_SECS) {
+        $_SESSION = [];
+        session_regenerate_id(true);
+        $error = "Du wurdest wegen Inaktivität abgemeldet. Bitte melde dich erneut an.";
+    } else {
+        $_SESSION['last_activity'] = time();
+    }
+}
+
 // Login Check
 if (!isset($_SESSION['user_id'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset($_POST['password'])) {
-        $stmt = $pdo->prepare("SELECT * FROM " . DB_PREFIX . "users WHERE username = ?");
-        $stmt->execute([$_POST['username']]);
-        $user = $stmt->fetch();
+        $password = (string) $_POST['password'];
 
-        if (defined('EMERGENCY_ADMIN_PASS') && $_POST['password'] === EMERGENCY_ADMIN_PASS) {
-            $stmt = $pdo->query("SELECT * FROM " . DB_PREFIX . "users WHERE role = 'manager' ORDER BY id ASC LIMIT 1");
-            $user = $stmt->fetch();
-            if ($user) {
-                // Notfallpasswort direkt als neues Passwort speichern!
-                $hash = password_hash(EMERGENCY_ADMIN_PASS, PASSWORD_DEFAULT);
-                $pdo->exec("UPDATE " . DB_PREFIX . "users SET password_hash = '$hash' WHERE id = " . $user['id']);
-                
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['full_name'] = $user['full_name'] ?? null;
-                $_SESSION['role'] = $user['role'];
-                header("Location: index.php");
-                exit;
-            }
-        }
-
-        if ($user && password_verify($_POST['password'], $user['password_hash'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['full_name'] = $user['full_name'] ?? null;
-            $_SESSION['role'] = $user['role'];
-            header("Location: index.php");
-            exit;
+        if (loginIsBlocked($pdo)) {
+            $error = "Zu viele fehlgeschlagene Anmeldeversuche. Bitte in " . LOGIN_WINDOW_MIN . " Minuten erneut versuchen.";
         } else {
+            if (defined('EMERGENCY_ADMIN_PASS') && EMERGENCY_ADMIN_PASS !== '' && hash_equals((string) EMERGENCY_ADMIN_PASS, $password)) {
+                $user = $pdo->query("SELECT * FROM " . DB_PREFIX . "users WHERE role = 'manager' ORDER BY id ASC LIMIT 1")->fetch();
+                if ($user) {
+                    // Notfallpasswort direkt als neues Passwort speichern!
+                    $pdo->prepare("UPDATE " . DB_PREFIX . "users SET password_hash = ? WHERE id = ?")
+                        ->execute([password_hash(EMERGENCY_ADMIN_PASS, PASSWORD_DEFAULT), $user['id']]);
+                    loginSucceed($pdo, $user);
+                }
+            }
+
+            $stmt = $pdo->prepare("SELECT * FROM " . DB_PREFIX . "users WHERE username = ?");
+            $stmt->execute([(string) $_POST['username']]);
+            $user = $stmt->fetch();
+
+            if ($user && password_verify($password, $user['password_hash'])) {
+                loginSucceed($pdo, $user);
+            }
+            loginRecordFailure($pdo);
             $error = "Ungültiger Benutzername oder Passwort.";
         }
     }
 }
 
-// Logout
-if (isset($_GET['logout'])) {
-    session_destroy();
-    header("Location: index.php");
-    exit;
+// CSRF-Schutz für ALLE Formulare eingeloggter Nutzer: Jede POST-Anfrage braucht das Token.
+// Fehlt es, wird die Anfrage verworfen, bevor eine Seite sie verarbeiten kann.
+$csrfMessage = null;
+if (isset($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && !csrfValid()) {
+    $tooLarge = empty($_POST) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0;
+    $csrfMessage = $tooLarge
+        ? "Die Anfrage war zu groß (z. B. zu große Datei, Limit: " . ini_get('post_max_size') . "). Es wurde nichts gespeichert."
+        : "Sicherheitsprüfung fehlgeschlagen (Sitzung abgelaufen?). Bitte die Seite neu laden und erneut versuchen.";
+    $_POST = [];
+    $_FILES = [];
+    $_SERVER['REQUEST_METHOD'] = 'GET';
 }
+
+// Das CSRF-Token wird automatisch in jedes <form method="post"> eingefügt.
+$csrfHiddenField = csrfField();
+ob_start(function (string $buffer) use ($csrfHiddenField): string {
+    return preg_replace('/<form\b[^>]*\bmethod\s*=\s*["\']?post\b[^>]*>/i', '$0' . $csrfHiddenField, $buffer);
+});
 
 // Fetch settings
 $stmt = $pdo->query("SELECT setting_key, setting_value FROM " . DB_PREFIX . "settings");
@@ -73,6 +139,12 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
     <script type="text/javascript" src="assets/js/trix.umd.min.js"></script>
     <!-- Modern Tailwind UI (lokoal) -->
     <script src="assets/js/tailwindcss.js"></script>
+    <script>
+        // HTML-Sonderzeichen maskieren, bevor Daten per innerHTML eingefügt werden (Schutz vor XSS).
+        function escHtml(v) {
+            return String(v ?? '').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+        }
+    </script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -170,7 +242,7 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
                 <?php if (isset($error)): ?>
                     <div class="bg-red-50 border border-red-200 border-l-4 border-l-red-500 p-4 rounded-r-xl rounded-l-md dark:bg-red-900/30 dark:border-red-900/50 dark:border-l-red-500 flex items-start shadow-sm" role="alert">
                         <span class="text-red-500 mr-3 text-xl">🛡️</span>
-                        <span class="text-red-800 dark:text-red-300 text-sm font-medium pt-0.5"><?php echo $error; ?></span>
+                        <span class="text-red-800 dark:text-red-300 text-sm font-medium pt-0.5"><?php echo htmlspecialchars($error); ?></span>
                     </div>
                 <?php endif; ?>
 
@@ -252,6 +324,9 @@ if ($theme === 'dark_cyber') $primaryColor = '#a855f7'; // Purple
             </header>
             
             <main class="flex-1 p-6 bg-slate-50 dark:bg-slate-900 overflow-y-auto">
+                <?php if ($csrfMessage): ?>
+                    <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800">❌ <?php echo htmlspecialchars($csrfMessage); ?></div>
+                <?php endif; ?>
                 <?php 
                     $page = $_GET['page'] ?? 'dashboard';
                     $allowedPages = ['dashboard', 'experiments', 'devices', 'device_categories', 'locations', 'classes', 'topics', 'users', 'settings', 'profile', 'system', 'updates'];

@@ -1,5 +1,18 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    // Session-Cookie absichern: nicht per JavaScript lesbar, nicht bei fremden Seiten mitgesendet,
+    // unter HTTPS nur verschlüsselt. Strict Mode verhindert untergeschobene Session-IDs.
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     session_start();
 }
 
